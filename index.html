@@ -34,16 +34,36 @@
       ];
 
       // 1. 도형의 모양(기하학)을 정의 (가로, 세로, 높이 20cm)
-      const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+      const geometry1 = new THREE.BoxGeometry(0.1, 0.1, 0.05);
 
       // 2. 모양과 색상(materials)을 합쳐서 실제 물체(Mesh)를 만듦
-      const cube = new THREE.Mesh(geometry, materials);
+      const cube1 = new THREE.Mesh(geometry1, materials);
 
       // 3. 위치 설정 (X: 0, Y: 0, Z: -0.5) -> 내 정면 50cm 앞
-      cube.position.set(0, 0, -0.5);
+      cube1.position.set(0, 0, -0.5);
 
       // 4. 장면(Scene)에 추가
-      scene.add(cube);
+      scene.add(cube1);
+      const geometry2 = new THREE.BoxGeometry(0.1, 0.1, 0.05);
+
+      // 2. 모양과 색상(materials)을 합쳐서 실제 물체(Mesh)를 만듦
+      const cube2 = new THREE.Mesh(geometry2, materials);
+
+      // 3. 위치 설정 (X: 0, Y: 0, Z: -0.5) -> 내 정면 50cm 앞
+      cube2.position.set(0, 0.1, -0.5);
+
+      // 4. 장면(Scene)에 추가
+      scene.add(cube2);
+      const geometry3 = new THREE.BoxGeometry(0.1, 0.1, 0.05);
+
+      // 2. 모양과 색상(materials)을 합쳐서 실제 물체(Mesh)를 만듦
+      const cube3 = new THREE.Mesh(geometry3, materials);
+
+      // 3. 위치 설정 (X: 0, Y: 0, Z: -0.5) -> 내 정면 50cm 앞
+      cube3.position.set(0, -0.1, -0.5);
+
+      // 4. 장면(Scene)에 추가
+      scene.add(cube3);
       const renderer = new THREE.WebGLRenderer({
         alpha: true,
         preserveDrawingBuffer: true,
