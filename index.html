@@ -170,11 +170,18 @@ console.log(`적용된 QR 좌표: ${qrX}, ${qrY}, ${qrZ}`);
           const view = pose.views[0];
           const viewport = xrSession.renderState.baseLayer.getViewport(view);
           
-          const {x, y, z} = view.transform.position;
-          
-          document.getElementById('pos-x').innerText = x.toFixed(3);
-          document.getElementById('pos-z').innerText = z.toFixed(3);
-          document.getElementById('cam-info').innerText = `${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}`;
+const {x, y, z} = view.transform.position;
+
+// 1. 현재 카메라의 월드(물리적) 좌표
+const camWorldPos = new THREE.Vector3(x, y, z);
+
+// 2. 🌟 핵심: 월드 좌표를 mapGroup 기준의 로컬 좌표(블렌더 도면 좌표)로 변환
+const camMapPos = mapGroup.worldToLocal(camWorldPos.clone());
+
+// 3. 디버그 UI에는 변환된 맵 기준 좌표를 출력!
+document.getElementById('pos-x').innerText = camMapPos.x.toFixed(3);
+document.getElementById('pos-z').innerText = camMapPos.z.toFixed(3);
+document.getElementById('cam-info').innerText = `${camMapPos.x.toFixed(1)}, ${camMapPos.y.toFixed(1)}, ${camMapPos.z.toFixed(1)}`;
 
           // 미니맵 동기화 (플레이어 아이콘은 카메라와 동일 위치)
           playerIcon.position.set(x, 0, z);
