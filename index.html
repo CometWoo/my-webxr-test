@@ -3,72 +3,96 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-  <title>AR Navigation Fix</title>
+  <title>AR Navigation Professional</title>
   <script src="https://unpkg.com/three@0.126.0/build/three.js"></script>
   <script src="https://unpkg.com/three@0.126.0/examples/js/loaders/GLTFLoader.js"></script>
   <style>
-    body { margin: 0; overflow: hidden; background: #000; }
-    #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
+    body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+    
+    /* AR 세션 중에도 보일 전체 레이어 */
+    #ui-root {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 1000;
+    }
+
     #start-btn {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      padding: 20px; background: #007AFF; color: white; border: none; border-radius: 10px; pointer-events: auto;
+      padding: 15px 30px; background: #007AFF; color: white;
+      border: none; border-radius: 12px; pointer-events: auto; font-size: 18px;
     }
-    /* 미니맵 디자인: 이미지처럼 반투명하게 */
-    #minimap-container {
+
+    /* 하단 미니맵 디자인 (이미지처럼 둥근 스타일) */
+    #minimap-ui {
       position: absolute; bottom: 0; left: 0; width: 100%; height: 35vh;
-      background: linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0));
-      border-top: 1px solid rgba(255,255,255,0.3);
-      display: none;
+      background: linear-gradient(to top, rgba(20, 30, 48, 0.9), rgba(36, 59, 85, 0.2));
+      border-top: 2px solid rgba(255, 255, 255, 0.4);
+      border-radius: 40px 40px 0 0;
+      display: none; /* 시작 버튼 누르면 보임 */
+    }
+
+    #minimap-label {
+      position: absolute; top: 15px; width: 100%; text-align: center;
+      color: white; font-weight: bold; letter-spacing: 2px;
     }
   </style>
 </head>
 <body>
-  <div id="ui-layer">
+
+  <div id="ui-root">
     <button id="start-btn" onclick="activateXR()">Start AR Navigation</button>
-    <div id="minimap-container"></div>
+    
+    <div id="minimap-ui">
+      <div id="minimap-label">3D MINI MAP</div>
+    </div>
   </div>
 
   <script>
     async function activateXR() {
-      document.getElementById('start-btn').style.display = 'none';
-      document.getElementById('minimap-container').style.display = 'block';
+      const uiRoot = document.getElementById('ui-root');
+      const startBtn = document.getElementById('start-btn');
+      const minimapUi = document.getElementById('minimap-ui');
+
+      // 1. WebXR 세션 요청 시 DOM Overlay 설정 (핵심!)
+      const session = await navigator.xr.requestSession("immersive-ar", {
+        optionalFeatures: ['dom-overlay'],
+        domOverlay: { root: uiRoot } // ui-root를 AR 위에 띄움
+      });
+
+      startBtn.style.display = 'none';
+      minimapUi.style.display = 'block';
 
       const canvas = document.createElement("canvas");
       document.body.appendChild(canvas);
       const gl = canvas.getContext("webgl", { xrCompatible: true });
       const scene = new THREE.Scene();
 
-      // [중요] 모든 모델이 잘 보이도록 밝은 조명 추가
-      const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
-      scene.add(ambientLight);
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-      directionalLight.position.set(0, 10, 5);
-      scene.add(directionalLight);
+      // 조명 설정 (모델이 검게 보이지 않도록)
+      scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+      sun.position.set(5, 10, 7);
+      scene.add(sun);
 
-      // 1. 메인 큐브들 (Layer 0)
-      const cubeG = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-      const cubeMat = new THREE.MeshNormalMaterial();
-      for(let i=0; i<3; i++) {
-        const c = new THREE.Mesh(cubeG, cubeMat);
-        c.position.set(i*0.3, 0, -0.5);
-        scene.add(c);
-      }
+      // 2. 오브젝트 생성
+      const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.1, 0.1),
+        new THREE.MeshNormalMaterial()
+      );
+      cube.position.set(0, 0, -0.5);
+      scene.add(cube); // Layer 0 (메인)
 
-      // 2. 미니맵 전용 요소 (Layer 1)
-      // 사용자 위치 표시용 구체 (노란색으로 변경하여 눈에 띄게 함)
+      // 미니맵 전용 요소들 (Layer 1)
       const playerIcon = new THREE.Mesh(
-        new THREE.SphereGeometry(0.05, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0xffff00 })
+        new THREE.SphereGeometry(0.04, 32, 32),
+        new THREE.MeshBasicMaterial({ color: 0x00ff00 }) // 밝은 녹색 점
       );
       playerIcon.layers.set(1);
       scene.add(playerIcon);
 
-      // 격자 추가 (Layer 1) - 더 크게 설정
-      const grid = new THREE.GridHelper(20, 20, 0xffffff, 0x444444);
+      const grid = new THREE.GridHelper(20, 40, 0xffffff, 0x888888);
       grid.layers.set(1);
       scene.add(grid);
 
-      // 3. GLB 맵 로딩
+      // GLB 로드
       const loader = new THREE.GLTFLoader();
       loader.load('./assets/library_map.glb', (gltf) => {
         const map = gltf.scene;
@@ -76,21 +100,16 @@
         scene.add(map);
       });
 
-      // 4. 카메라 설정
+      // 3. 카메라 및 렌더러 설정
       const renderer = new THREE.WebGLRenderer({ alpha: true, canvas: canvas, context: gl });
       renderer.autoClear = false;
 
-      const camera = new THREE.PerspectiveCamera();
-      camera.matrixAutoUpdate = false;
+      const mainCamera = new THREE.PerspectiveCamera();
+      mainCamera.matrixAutoUpdate = false;
 
-      // 미니맵 카메라: 줌 조절 (mapSize를 2로 줄여서 더 크게 보이게 함)
-      const mapSize = 2; 
-      const minimapCamera = new THREE.OrthographicCamera(-mapSize, mapSize, mapSize, -mapSize, 0.1, 100);
-      // [핵심] 미니맵 카메라가 Layer 0(큐브)과 Layer 1(맵/격자)을 모두 보게 함
-      minimapCamera.layers.enable(0);
-      minimapCamera.layers.enable(1);
+      const minimapCamera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 100);
+      minimapCamera.layers.enable(1); // 맵 전용 레이어 보기
 
-      const session = await navigator.xr.requestSession("immersive-ar");
       session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
       const refSpace = await session.requestReferenceSpace('local');
 
@@ -104,30 +123,27 @@
           const viewport = session.renderState.baseLayer.getViewport(view);
           const {x, y, z} = view.transform.position;
 
-          // 아이콘 및 미니맵 카메라 위치 동기화
-          playerIcon.position.set(x, y, z);
-          minimapCamera.position.set(x, 5, z); // 5미터 위에서 내려다봄
-          minimapCamera.lookAt(x, y, z);
+          // 위치 동기화
+          playerIcon.position.set(x, 0, z); // 바닥에 붙임
+          minimapCamera.position.set(x, 10, z);
+          minimapCamera.lookAt(x, 0, z);
 
-          // --- 1. 메인 AR 화면 렌더링 ---
+          // --- 렌더링 1: 메인 AR 뷰 ---
           renderer.setViewport(0, 0, viewport.width, viewport.height);
-          camera.matrix.fromArray(view.transform.matrix);
-          camera.projectionMatrix.fromArray(view.projectionMatrix);
-          camera.updateMatrixWorld(true);
+          mainCamera.matrix.fromArray(view.transform.matrix);
+          mainCamera.projectionMatrix.fromArray(view.projectionMatrix);
+          mainCamera.updateMatrixWorld(true);
           
           renderer.clear();
-          renderer.render(scene, camera);
+          renderer.render(scene, mainCamera);
 
-          // --- 2. 미니맵 화면 렌더링 (하단 35%) ---
+          // --- 렌더링 2: 미니맵 (하단 35%) ---
           const mapH = viewport.height * 0.35;
           renderer.setViewport(0, 0, viewport.width, mapH);
           renderer.setScissor(0, 0, viewport.width, mapH);
           renderer.setScissorTest(true);
 
-          // 미니맵 배경을 아주 살짝 회색으로 채워 영역 확인
-          renderer.setClearColor(0x111111, 0.5); 
-          renderer.clearDepth(); // 깊이 버퍼 초기화 (메인 화면 오브젝트 위에 그리기 위해)
-          
+          renderer.clearDepth(); // 메인 뷰의 깊이값을 무시하고 위에 그림
           renderer.render(scene, minimapCamera);
           
           renderer.setScissorTest(false);
