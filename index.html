@@ -8,6 +8,22 @@
   <title>Hello WebXR!</title>
 
   <script src="https://unpkg.com/three@0.126.0/build/three.js"></script>
+  <style>
+    /* 미니맵 컨테이너 스타일 */
+    #minimap-container {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 150px;
+      height: 150px;
+      border: 3px solid rgba(255, 255, 255, 0.8);
+      border-radius: 50%; /* 원형으로 만들기 */
+      overflow: hidden;
+      z-index: 100; /* AR 화면보다 위에 오도록 */
+      background: rgba(0, 0, 0, 0.3); /* 배경을 약간 어둡게 */
+      pointer-events: none; /* 클릭 방해 금지 */
+    }
+  </style>
 </head>
 
 <body>
@@ -64,6 +80,16 @@
 
       // 4. 장면(Scene)에 추가
       scene.add(cube3);
+      const playerIconGeometry = new THREE.SphereGeometry(0.02, 16, 16); // 아주 작은 구 (반지름 2cm)
+      const playerIconMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // 빨간색
+      const playerIcon = new THREE.Mesh(playerIconGeometry, playerIconMaterial);
+
+      // 중요! 이 아이콘은 1번 레이어에만 존재하게 합니다. (기본값은 0번 레이어)
+      // 메인 카메라는 0번만 보고, 미니맵 카메라는 0번과 1번을 둘 다 보게 할 것입니다.
+      playerIcon.layers.set(1); 
+
+      scene.add(playerIcon);
+      
       const renderer = new THREE.WebGLRenderer({
         alpha: true,
         preserveDrawingBuffer: true,
@@ -74,31 +100,68 @@
 
       const camera = new THREE.PerspectiveCamera();
       camera.matrixAutoUpdate = false;
+      const mapSize = 5; // 미니맵이 보여줄 범위
+      const minimapCamera = new THREE.OrthographicCamera(-mapSize, mapSize, mapSize, -mapSize, 0.1, 100);
+      minimapCamera.position.set(0, 10, 0); // 높이 10 지점
+      minimapCamera.lookAt(0, 0, 0);
+      minimapCamera.layers.enable(1);
+      
       const session = await navigator.xr.requestSession("immersive-ar");
       session.updateRenderState({
         baseLayer: new XRWebGLLayer(session, gl)
       });
-
+      
+      
       const referenceSpace = await session.requestReferenceSpace('local');
-      const onXRFrame = (time, frame) => {
-        session.requestAnimationFrame(onXRFrame);
+const onXRFrame = (time, frame) => {
+  session.requestAnimationFrame(onXRFrame);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
 
-        gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer)
+  const pose = frame.getViewerPose(referenceSpace);
+  if (pose) {
+    const view = pose.views[0];
+    const viewport = session.renderState.baseLayer.getViewport(view);
+    
+    // 1. 메인 AR 화면 렌더링
+    renderer.setSize(viewport.width, viewport.height);
+    camera.matrix.fromArray(view.transform.matrix);
+    camera.projectionMatrix.fromArray(view.projectionMatrix);
+    camera.updateMatrixWorld(true);
 
-        const pose = frame.getViewerPose(referenceSpace);
-        if (pose) {
-          const view = pose.views[0];
+    const userX = view.transform.position.x;
+    const userY = view.transform.position.y;
+    const userZ = view.transform.position.z;
 
-          const viewport = session.renderState.baseLayer.getViewport(view);
-          renderer.setSize(viewport.width, viewport.height)
+    // 빨간 점의 위치를 사용자 위치와 동일하게 맞춥니다.
+    playerIcon.position.set(userX, userY, userZ);
+    
+    renderer.clear(); // 화면 초기화
+    renderer.render(scene, camera); // 실제 세상 + 오브젝트 렌더링
 
-          camera.matrix.fromArray(view.transform.matrix)
-          camera.projectionMatrix.fromArray(view.projectionMatrix);
-          camera.updateMatrixWorld(true);
+    minimapCamera.position.set(userX, 10, userZ); // 높이(10)는 유지
+    minimapCamera.lookAt(userX, userY, userZ); // 사용자를 내려다봄
+    // ---------------------------------------------------------
+    // 2. [추가] 미니맵 렌더링 (Viewport 활용)
+    // ---------------------------------------------------------
+    
+    // 사용자의 위치를 추적하여 미니맵 카메라도 이동 (Y축 높이는 고정)
+    const userPosX = view.transform.position.x;
+    const userPosZ = view.transform.position.z;
+    minimapCamera.position.set(userPosX, 10, userPosZ); 
+    minimapCamera.lookAt(userPosX, 0, userPosZ);
 
-          renderer.render(scene, camera)
-        }
-      }
+    // 미니맵이 그려질 영역 설정 (우측 하단 150x150 크기)
+    const mapSizePx = 150;
+    renderer.setViewport(viewport.width - mapSizePx - 20, 20, mapSizePx, mapSizePx);
+    renderer.setScissor(viewport.width - mapSizePx - 20, 20, mapSizePx, mapSizePx);
+    renderer.setScissorTest(true); // 지정된 영역만 그리도록 설정
+    
+    renderer.render(scene, minimapCamera); // 미니맵 렌더링
+    
+    renderer.setScissorTest(false); // 다시 전체 화면 모드로 복구
+    renderer.setViewport(0, 0, viewport.width, viewport.height); // 뷰포트 복구
+  }
+}
       session.requestAnimationFrame(onXRFrame);
     }
   </script>
