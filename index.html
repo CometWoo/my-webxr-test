@@ -3,37 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-  <title>AR Navigation Debug</title>
+  <title>AR Navigation Debug - Sync Ready</title>
   <script src="https://unpkg.com/three@0.126.0/build/three.js"></script>
   <script src="https://unpkg.com/three@0.126.0/examples/js/loaders/GLTFLoader.js"></script>
   <style>
     body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
     
-    /* AR 세션 시작 전에는 숨김 */
     #overlay-root {
-      position: fixed; /* absolute보다 fixed가 안정적 */
-      top: 0; left: 0; width: 100vw; height: 100vh;
-      display: none; 
-      z-index: 999;
-      pointer-events: none; /* UI 클릭이 필요하면 자식 요소에서 auto로 변경 */
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      display: none; z-index: 999; pointer-events: none;
     }
 
-    /* 디버그 패널 가시성 강화 */
     #debug-panel {
       position: absolute; top: 10px; left: 10px;
-      background: rgba(0, 255, 0, 0.2); 
-      color: #0f0; border: 1px solid #0f0;
+      background: rgba(0, 255, 0, 0.2); color: #0f0; border: 1px solid #0f0;
       padding: 10px; border-radius: 5px; font-size: 11px; font-family: monospace;
-      pointer-events: auto; /* 디버그 클릭 가능하도록 */
+      pointer-events: auto;
     }
 
-    /* 미니맵 UI 디자인 수정 */
     #minimap-ui {
       position: absolute; bottom: 0; left: 0; width: 100%; height: 35vh;
-      /* 배경을 투명하게 해서 WebGL 격자가 보이도록 함 */
       background: linear-gradient(to top, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0));
-      border-top: 2px solid #0f0;
-      box-sizing: border-box;
+      border-top: 2px solid #0f0; box-sizing: border-box;
     }
 
     #minimap-title {
@@ -45,6 +36,15 @@
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
       padding: 20px 40px; background: #007AFF; color: white;
       border: none; border-radius: 15px; font-size: 18px; cursor: pointer;
+    }
+
+    /* 추가된 스캔 버튼 (테스트용) */
+    #sync-btn {
+      position: absolute; bottom: 38vh; left: 50%; transform: translateX(-50%);
+      padding: 12px 24px; background: #FF3B30; color: white;
+      border: none; border-radius: 8px; font-size: 16px; font-weight: bold;
+      pointer-events: auto; cursor: pointer; display: none;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
   </style>
 </head>
@@ -63,20 +63,31 @@
       </div>
     </div>
     
+    <button id="sync-btn" onclick="simulateQRScan()">QR 스캔 (위치 동기화)</button>
+
     <div id="minimap-ui">
       <div id="minimap-title">SYSTEM: TACTICAL MINI MAP</div>
     </div>
   </div>
 
   <script>
+    // 전역 변수 선언
+    let mapGroup, mainCamera, xrSession;
+    
+    // [서버 데이터 모사] JSON 형태의 마커 기준점 데이터
+    const serverMarkerData = {
+      marker_id: "LIB_ENTRANCE_01",
+      coordinates: { x: 0.0, y: 0.0, z: -5.0 }, // 3D 맵 도면 상의 입구 위치 (Z축 5m 앞)
+      yaw: 0.0 // 마커가 바라보는 방향의 오프셋 (라디안)
+    };
+
     async function activateXR() {
       const overlayRoot = document.getElementById('overlay-root');
       const startBtn = document.getElementById('start-btn');
+      const syncBtn = document.getElementById('sync-btn');
 
-      // WebXR 세션 설정
-      let session;
       try {
-        session = await navigator.xr.requestSession("immersive-ar", {
+        xrSession = await navigator.xr.requestSession("immersive-ar", {
           optionalFeatures: ['dom-overlay'],
           domOverlay: { root: overlayRoot } 
         });
@@ -86,80 +97,81 @@
       }
 
       startBtn.style.display = 'none';
-      overlayRoot.style.display = 'block'; // 즉시 표시
+      overlayRoot.style.display = 'block';
+      syncBtn.style.display = 'block'; // AR 시작 후 동기화 버튼 표시
 
       const canvas = document.createElement("canvas");
       const gl = canvas.getContext("webgl", { xrCompatible: true });
       const scene = new THREE.Scene();
 
-      // 조명
       scene.add(new THREE.AmbientLight(0xffffff, 1.2));
 
-      // [1] 메인 큐브
-      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshNormalMaterial());
-      cube.position.set(0, 0, -0.5);
-      scene.add(cube);
+      // 🌟 핵심 포인트 1: 맵과 관련된 모든 오브젝트를 하나의 그룹으로 묶습니다.
+      mapGroup = new THREE.Group();
+      scene.add(mapGroup);
 
-      // [2] 미니맵 전용 객체 (Layer 1)
-      const playerIcon = new THREE.Mesh(
-        new THREE.SphereGeometry(0.04, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0x00ff00 }) // 녹색 점
-      );
-      playerIcon.layers.set(1);
-      scene.add(playerIcon);
-
-      // 격자 가시성 강화 (흰색으로 변경)
-      const grid = new THREE.GridHelper(10, 20, 0x00ff00, 0x333333);
+      // 격자 (mapGroup에 추가)
+      const grid = new THREE.GridHelper(20, 40, 0x00ff00, 0x333333);
       grid.layers.set(1);
-      scene.add(grid);
+      mapGroup.add(grid); // scene.add() 대신 mapGroup.add()
 
-      // 3D 맵 로드
+      // 3D 맵 로드 (mapGroup에 추가)
       const loader = new THREE.GLTFLoader();
       loader.load('./assets/library_map.glb', (gltf) => {
         document.getElementById('map-status').innerText = "Loaded";
         const map = gltf.scene;
         map.traverse(n => { if(n.isMesh) n.layers.set(1); });
-        scene.add(map);
+        mapGroup.add(map); // 맵 통째로 그룹에 포함
       }, undefined, (e) => {
-        document.getElementById('map-status').innerText = "Error: " + e.message;
+        document.getElementById('map-status').innerText = "Simulated Map Loaded";
+        // 에러가 나도 테스트할 수 있도록 임시 큐브를 맵 자리에 추가
+        const dummyMap = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 2), new THREE.MeshNormalMaterial());
+        dummyMap.position.set(serverMarkerData.coordinates.x, serverMarkerData.coordinates.y, serverMarkerData.coordinates.z);
+        dummyMap.layers.set(1);
+        mapGroup.add(dummyMap);
       });
+
+      // 미니맵용 플레이어 아이콘 (이것은 실제 카메라 위치를 따라가므로 mapGroup 밖에 둡니다)
+      const playerIcon = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xff0000 })
+      );
+      playerIcon.layers.set(1);
+      scene.add(playerIcon);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, canvas: canvas, context: gl, antialias: true });
       renderer.autoClear = false;
 
-      const mainCamera = new THREE.PerspectiveCamera();
+      mainCamera = new THREE.PerspectiveCamera();
       mainCamera.matrixAutoUpdate = false;
 
-      // 미니맵 카메라 (위에서 아래로 내려다봄)
-      const minimapCamera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 100);
+      const minimapCamera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 100);
       minimapCamera.layers.enable(1);
 
-      session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
-      const refSpace = await session.requestReferenceSpace('local');
+      xrSession.updateRenderState({ baseLayer: new XRWebGLLayer(xrSession, gl) });
+      const refSpace = await xrSession.requestReferenceSpace('local');
 
       const onXRFrame = (time, frame) => {
-        session.requestAnimationFrame(onXRFrame);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
+        xrSession.requestAnimationFrame(onXRFrame);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, xrSession.renderState.baseLayer.framebuffer);
 
         const pose = frame.getViewerPose(refSpace);
         if (pose) {
-          document.getElementById('status').innerText = "Active";
           const view = pose.views[0];
-          const viewport = session.renderState.baseLayer.getViewport(view);
+          const viewport = xrSession.renderState.baseLayer.getViewport(view);
           
           const {x, y, z} = view.transform.position;
           
-          // 디버그 실시간 업데이트
           document.getElementById('pos-x').innerText = x.toFixed(3);
           document.getElementById('pos-z').innerText = z.toFixed(3);
           document.getElementById('cam-info').innerText = `${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}`;
 
-          // 미니맵 동기화
+          // 미니맵 동기화 (플레이어 아이콘은 카메라와 동일 위치)
           playerIcon.position.set(x, 0, z);
-          minimapCamera.position.set(x, 5, z); // 높이 조절
+          minimapCamera.position.set(x, 10, z); 
           minimapCamera.lookAt(x, 0, z);
 
-          // 1. 메인 뷰
+          // 메인 뷰
           renderer.setViewport(0, 0, viewport.width, viewport.height);
           mainCamera.matrix.fromArray(view.transform.matrix);
           mainCamera.projectionMatrix.fromArray(view.projectionMatrix);
@@ -168,7 +180,7 @@
           renderer.clear();
           renderer.render(scene, mainCamera);
 
-          // 2. 미니맵 뷰 (가장 하단)
+          // 미니맵 뷰
           const mapH = viewport.height * 0.35;
           renderer.setViewport(0, 0, viewport.width, mapH);
           renderer.setScissor(0, 0, viewport.width, mapH);
@@ -182,7 +194,62 @@
           document.getElementById('status').innerText = "Searching Pose...";
         }
       };
-      session.requestAnimationFrame(onXRFrame);
+      xrSession.requestAnimationFrame(onXRFrame);
+    }
+
+    // 🌟 핵심 포인트 2: QR 스캔 및 동기화 로직
+    function simulateQRScan() {
+      if (!mainCamera || !mapGroup) return;
+
+      document.getElementById('status').innerText = "Syncing...!";
+      
+      // 1. 현재 카메라(사용자)의 위치와 방향을 가져옵니다.
+      // (실제 WebXR Image Tracking API를 쓰면 이 자리에 '인식된 이미지의 Pose'가 들어갑니다)
+      const currentCamPos = new THREE.Vector3();
+      const currentCamQuat = new THREE.Quaternion();
+      currentCamPos.setFromMatrixPosition(mainCamera.matrixWorld);
+      currentCamQuat.setFromRotationMatrix(mainCamera.matrixWorld);
+
+      // 맵 그룹 초기화 (계산을 위해 일단 원점으로 되돌림)
+      mapGroup.position.set(0, 0, 0);
+      mapGroup.quaternion.identity();
+      mapGroup.updateMatrixWorld(true);
+
+      // JSON에서 가져온 맵 상의 기준점 위치
+      const jsonPos = new THREE.Vector3(
+        serverMarkerData.coordinates.x,
+        serverMarkerData.coordinates.y,
+        serverMarkerData.coordinates.z
+      );
+
+      // [Step A: 방향 맞추기] 
+      // 사용자가 바라보는 방향(Y축 회전)과 JSON에 정의된 방향을 일치시킵니다.
+      const euler = new THREE.Euler().setFromQuaternion(currentCamQuat, 'YXZ');
+      mapGroup.rotation.y = euler.y - serverMarkerData.yaw;
+      mapGroup.updateMatrixWorld(true);
+
+      // [Step B: 위치 맞추기]
+      // 방향이 맞춰진 맵을 기준으로, JSON 마커 위치가 실제 카메라(마커) 위치와 겹치도록 이동시킵니다.
+      // 1. 회전이 적용된 상태의 JSON 마커 월드 좌표를 계산합니다.
+      const rotatedJsonPos = jsonPos.clone().applyMatrix4(mapGroup.matrixWorld);
+      
+      // 2. 현재 카메라 위치와 계산된 좌표의 차이(오프셋)를 구합니다.
+      const offset = new THREE.Vector3().subVectors(currentCamPos, rotatedJsonPos);
+      
+      // 3. 맵 전체를 오프셋만큼 밀어줍니다. (높이 Y축은 보통 바닥 0으로 고정하는 것이 안정적입니다)
+      offset.y = 0; 
+      mapGroup.position.copy(offset);
+      mapGroup.updateMatrixWorld(true);
+
+      document.getElementById('status').innerText = "Location Synced!";
+      document.getElementById('status').style.color = "#FFD700"; // 성공 시 노란색 표시
+      document.getElementById('sync-btn').innerText = "동기화 완료";
+      document.getElementById('sync-btn').style.background = "#34C759";
+      
+      // 3초 후 버튼 숨기기
+      setTimeout(() => {
+        document.getElementById('sync-btn').style.display = 'none';
+      }, 3000);
     }
   </script>
 </body>
