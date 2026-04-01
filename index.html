@@ -21,16 +21,19 @@
       pointer-events: auto;
     }
 
-    #minimap-ui {
-      position: absolute; bottom: 0; left: 0; width: 100%; height: 35vh;
-      background: linear-gradient(to top, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0));
-      border-top: 2px solid #0f0; box-sizing: border-box;
-    }
+#minimap-ui {
+  position: absolute; bottom: 0; left: 0; width: 100%; height: 35vh;
+  /* 검은색 배경을 제거하고, 경계선을 파란색 계열로 변경 */
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0));
+  border-top: 2px solid #007AFF;
+  box-sizing: border-box;
+}
 
-    #minimap-title {
-      color: #0f0; text-align: center; padding-top: 10px;
-      font-size: 12px; font-weight: bold; text-shadow: 1px 1px 2px #000;
-    }
+#minimap-title {
+  /* 밝은 배경에 어울리도록 글자색 변경 */
+  color: #007AFF; text-align: center; padding-top: 10px;
+  font-size: 12px; font-weight: bold; text-shadow: 1px 1px 2px #fff;
+}
 
     #start-btn {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -120,10 +123,26 @@ console.log(`적용된 QR 좌표: ${qrX}, ${qrY}, ${qrZ}`);
       mapGroup = new THREE.Group();
       scene.add(mapGroup);
 
-      // 격자 (mapGroup에 추가)
-      const grid = new THREE.GridHelper(20, 40, 0x00ff00, 0x333333);
-      grid.layers.set(1);
-      mapGroup.add(grid); // scene.add() 대신 mapGroup.add()
+// 1. 🌟 흰색 바닥(Floor Plane) 추가
+const floorGeometry = new THREE.PlaneGeometry(40, 40); // 맵을 덮을 만큼 충분히 넓게
+const floorMaterial = new THREE.MeshBasicMaterial({ 
+  color: 0xffffff, // 흰색
+  side: THREE.DoubleSide,
+  transparent: true,
+  opacity: 0.9 // AR 카메라 화면을 완전히 가리지 않도록 살짝 투명도 부여
+});
+const floorPlane = new THREE.Mesh(floorGeometry, floorMaterial);
+floorPlane.rotation.x = -Math.PI / 2; // 평면을 X축 기준으로 90도 눕혀서 바닥으로 만듦
+floorPlane.position.y = -0.05; // 격자와 겹쳐서 깨지는 현상(Z-fighting) 방지를 위해 아주 살짝 아래로 내림
+
+floorPlane.layers.set(1); // 미니맵 카메라에서만 렌더링되도록 레이어 지정
+mapGroup.add(floorPlane);
+
+// 2. 바뀐 흰색 바닥에 어울리도록 격자 색상을 어두운 색(검은색/짙은 회색)으로 변경
+const grid = new THREE.GridHelper(40, 80, 0x000000, 0x555555);
+grid.position.y = 0; // 바닥보다 살짝 위(0)에 위치
+grid.layers.set(1);
+mapGroup.add(grid);
 
       // 3D 맵 로드 (mapGroup에 추가)
       const loader = new THREE.GLTFLoader();
