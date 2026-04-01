@@ -74,12 +74,22 @@
     // 전역 변수 선언
     let mapGroup, mainCamera, xrSession;
     
-    // [서버 데이터 모사] JSON 형태의 마커 기준점 데이터
-    const serverMarkerData = {
-      marker_id: "LIB_ENTRANCE_01",
-      coordinates: { x: 0.0, y: 0.0, z: -5.0 }, // 3D 맵 도면 상의 입구 위치 (Z축 5m 앞)
-      yaw: 0.0 // 마커가 바라보는 방향의 오프셋 (라디안)
-    };
+// 1. 접속한 URL의 파라미터(?x=...&y=...&z=...)를 읽어옵니다.
+const urlParams = new URLSearchParams(window.location.search);
+
+// 2. 값을 추출하고, 숫자로 변환합니다. (값이 없으면 기본값 0을 사용)
+const qrX = parseFloat(urlParams.get('x')) || 0;
+const qrY = parseFloat(urlParams.get('y')) || 0;
+const qrZ = parseFloat(urlParams.get('z')) || 0;
+
+// 3. 추출한 값을 기준점 데이터에 동적으로 삽입합니다.
+const serverMarkerData = {
+  marker_id: "QR_SCANNED_MARKER",
+  coordinates: { x: qrX, y: qrY, z: qrZ }, // URL에서 가져온 진짜 좌표 적용!
+  yaw: 0.0 // 마커의 방향값도 필요하다면 URL 파라미터(?yaw=90)로 받을 수 있습니다.
+};
+
+console.log(`적용된 QR 좌표: ${qrX}, ${qrY}, ${qrZ}`);
 
     async function activateXR() {
       const overlayRoot = document.getElementById('overlay-root');
