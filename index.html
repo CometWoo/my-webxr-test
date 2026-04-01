@@ -3,172 +3,128 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-  <title>AR Library Navigation</title>
-
+  <title>AR Debug Mode</title>
   <script src="https://unpkg.com/three@0.126.0/build/three.js"></script>
   <script src="https://unpkg.com/three@0.126.0/examples/js/loaders/GLTFLoader.js"></script>
 
   <style>
-    body { margin: 0; padding: 0; overflow: hidden; font-family: sans-serif; }
-    
-    /* 시작 버튼 스타일 */
-    #overlay {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 200;
+    body { margin: 0; overflow: hidden; background-color: #000; }
+    /* 디버그 로그 패널 */
+    #debug-console {
+      position: absolute; top: 10px; left: 10px; width: 80%;
+      max-height: 100px; overflow-y: auto; background: rgba(0,0,0,0.7);
+      color: #0f0; font-family: monospace; font-size: 10px; z-index: 1000;
+      padding: 5px; pointer-events: none; border: 1px solid #0f0;
     }
-    button {
-      padding: 15px 30px;
-      font-size: 18px;
-      background: #007AFF;
-      color: white;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
+    #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
+    #start-btn {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      padding: 20px; background: #007AFF; color: white; border: none; border-radius: 10px; pointer-events: auto;
     }
-
-    /* 하단 1/3 미니맵 컨테이너 스타일 */
+    /* 미니맵 영역 시각화 (디버그용 빨간 테두리) */
     #minimap-container {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      height: 33vh; /* 화면의 약 1/3 */
-      background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
-      border-top: 2px solid rgba(255, 255, 255, 0.5);
-      border-radius: 30px 30px 0 0;
-      overflow: hidden;
-      z-index: 100;
-      pointer-events: none; /* 터치 이벤트가 AR 화면으로 전달되도록 */
-      display: none; /* AR 시작 전에는 숨김 */
-    }
-
-    #minimap-label {
-      position: absolute;
-      top: 15px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: white;
-      font-size: 14px;
-      font-weight: bold;
-      text-shadow: 1px 1px 2px black;
+      position: absolute; bottom: 0; left: 0; width: 100%; height: 33vh;
+      border-top: 3px solid red; /* 위치 확인용 */
+      background: rgba(255, 0, 0, 0.1); /* 영역 확인용 연한 빨강 */
     }
   </style>
 </head>
-
 <body>
-  <div id="overlay">
-    <button onclick="activateXR()">Start AR Navigation</button>
-  </div>
-
-  <div id="minimap-container">
-    <div id="minimap-label">MINI MAP</div>
+  <div id="debug-console">System Ready...</div>
+  <div id="ui-layer">
+    <button id="start-btn" onclick="activateXR()">Start AR (Debug)</button>
+    <div id="minimap-container"></div>
   </div>
 
   <script>
+    const debugConsole = document.getElementById('debug-console');
+    function log(msg) {
+      debugConsole.innerHTML += `<br>> ${msg}`;
+      debugConsole.scrollTop = debugConsole.scrollHeight;
+      console.log(msg);
+    }
+
     async function activateXR() {
+      log("Initializing XR...");
       if (!navigator.xr) {
-        alert("이 브라우저는 WebXR을 지원하지 않습니다.");
+        alert("WebXR Not Supported");
         return;
       }
 
-      // 시작 버튼 숨기기 및 미니맵 보이기
-      document.getElementById('overlay').style.display = 'none';
-      document.getElementById('minimap-container').style.display = 'block';
-
+      document.getElementById('start-btn').style.display = 'none';
+      
       const canvas = document.createElement("canvas");
       document.body.appendChild(canvas);
       const gl = canvas.getContext("webgl", { xrCompatible: true });
       const scene = new THREE.Scene();
 
-      // ---------------------------------------------------------
-      // 1. 오브젝트 및 맵 설정
-      // ---------------------------------------------------------
-      const materials = [
-        new THREE.MeshBasicMaterial({ color: 0xff0000 }),
-        new THREE.MeshBasicMaterial({ color: 0x0000ff }),
-        new THREE.MeshBasicMaterial({ color: 0x00ff00 }),
-        new THREE.MeshBasicMaterial({ color: 0xff00ff }),
-        new THREE.MeshBasicMaterial({ color: 0x00ffff }),
-        new THREE.MeshBasicMaterial({ color: 0xffff00 })
-      ];
+      // [디버그] 조명 추가 (모델이 검게 보일 수 있음)
+      const light = new THREE.AmbientLight(0xffffff, 1);
+      scene.add(light);
 
-      // 가이드용 큐브들 (Layer 0: 메인화면/미니맵 둘 다 보임)
-      const cubeG = new THREE.BoxGeometry(0.1, 0.1, 0.05);
-      const cube1 = new THREE.Mesh(cubeG, materials);
-      cube1.position.set(0, 0, -0.5);
-      scene.add(cube1);
+      // 1. 오브젝트 설정
+      const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+      const cube = new THREE.Mesh(geometry, new THREE.MeshNormalMaterial());
+      cube.position.set(0, 0, -0.5);
+      scene.add(cube);
 
-      const cube2 = new THREE.Mesh(cubeG, materials);
-      cube2.position.set(0.5, 0, -1);
-      scene.add(cube2);
-
-      // 내 위치 표시용 빨간 점 (Layer 1: 미니맵에만 보임)
+      // 2. 미니맵 전용 요소 (Layer 1)
       const playerIcon = new THREE.Mesh(
-        new THREE.SphereGeometry(0.03, 16, 16),
+        new THREE.SphereGeometry(0.05, 16, 16),
         new THREE.MeshBasicMaterial({ color: 0xff0000 })
       );
-      playerIcon.layers.set(1); 
+      playerIcon.layers.set(1);
       scene.add(playerIcon);
 
-      // 3D 맵 파일 로드 (Layer 1: 미니맵에만 보임)
-      const loader = new THREE.GLTFLoader();
-      loader.load('./assets/library_map.glb', (gltf) => {
-        const mapModel = gltf.scene;
-        mapModel.traverse((node) => {
-          if (node.isMesh) node.layers.set(1);
-        });
-        scene.add(mapModel);
-      });
+      // [디버그] 맵 로드 전까지 바닥 격자 표시 (Layer 1)
+      const gridHelper = new THREE.GridHelper(10, 10);
+      gridHelper.layers.set(1);
+      scene.add(gridHelper);
 
-      // ---------------------------------------------------------
-      // 2. 카메라 및 렌더러 설정
-      // ---------------------------------------------------------
-      const renderer = new THREE.WebGLRenderer({
-        alpha: true,
-        preserveDrawingBuffer: true,
-        canvas: canvas,
-        context: gl
-      });
+      // 3D 맵 로드
+      const loader = new THREE.GLTFLoader();
+      loader.load('./assets/library_map.glb', 
+        (gltf) => {
+          log("Map Loaded Successfully!");
+          const map = gltf.scene;
+          map.traverse(n => { if(n.isMesh) n.layers.set(1); });
+          scene.add(map);
+        },
+        undefined,
+        (e) => log("Map Load Error: " + e.message)
+      );
+
+      // 3. 렌더러 및 카메라
+      const renderer = new THREE.WebGLRenderer({ alpha: true, canvas: canvas, context: gl });
       renderer.autoClear = false;
 
-      // 메인 XR 카메라 (Layer 0만 봄)
       const camera = new THREE.PerspectiveCamera();
       camera.matrixAutoUpdate = false;
 
-      // 미니맵 카메라 (Layer 0과 1을 모두 봄)
-      const mapSize = 5; 
-      const minimapCamera = new THREE.OrthographicCamera(-mapSize, mapSize, mapSize, -mapSize, 0.1, 100);
-      minimapCamera.layers.enable(1); 
+      const minimapCamera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 100);
+      minimapCamera.layers.enable(1); // 큐브(0)와 맵(1) 모두 보기
 
-      // ---------------------------------------------------------
-      // 3. XR 세션 시작 및 루프
-      // ---------------------------------------------------------
       const session = await navigator.xr.requestSession("immersive-ar");
-      session.updateRenderState({
-        baseLayer: new XRWebGLLayer(session, gl)
-      });
+      session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+      const refSpace = await session.requestReferenceSpace('local');
 
-      const referenceSpace = await session.requestReferenceSpace('local');
-      
+      log("Session Started. Check bottom of screen.");
+
       const onXRFrame = (time, frame) => {
         session.requestAnimationFrame(onXRFrame);
         gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
 
-        const pose = frame.getViewerPose(referenceSpace);
+        const pose = frame.getViewerPose(refSpace);
         if (pose) {
           const view = pose.views[0];
           const viewport = session.renderState.baseLayer.getViewport(view);
           
-          // 사용자의 실제 위치 가져오기
-          const userX = view.transform.position.x;
-          const userY = view.transform.position.y;
-          const userZ = view.transform.position.z;
+          // 사용자 위치 업데이트
+          const {x, y, z} = view.transform.position;
+          playerIcon.position.set(x, y, z);
 
-          // 1. 메인 XR 뷰 렌더링 (전체 화면)
-          renderer.setSize(viewport.width, viewport.height);
+          // --- 1. 메인 뷰 ---
+          renderer.setViewport(0, 0, viewport.width, viewport.height);
           camera.matrix.fromArray(view.transform.matrix);
           camera.projectionMatrix.fromArray(view.projectionMatrix);
           camera.updateMatrixWorld(true);
@@ -176,26 +132,20 @@
           renderer.clear();
           renderer.render(scene, camera);
 
-          // 2. 미니맵 뷰 렌더링 (하단 1/3)
-          // 아이콘 및 카메라 위치 업데이트
-          playerIcon.position.set(userX, userY, userZ);
-          minimapCamera.position.set(userX, 10, userZ); // 사용자 머리 위 10m
-          minimapCamera.lookAt(userX, userY, userZ);
-
-          const mapW = viewport.width;
-          const mapH = viewport.height * 0.33; // 하단 1/3 영역 계산
-          
-          renderer.setViewport(0, 0, mapW, mapH);
-          renderer.setScissor(0, 0, mapW, mapH);
+          // --- 2. 미니맵 뷰 ---
+          const mapH = viewport.height * 0.33;
+          // WebGL Viewport는 아래에서 위로 계산하므로 (0, 0)이 바닥입니다.
+          renderer.setViewport(0, 0, viewport.width, mapH);
+          renderer.setScissor(0, 0, viewport.width, mapH);
           renderer.setScissorTest(true);
+
+          minimapCamera.position.set(x, 10, z);
+          minimapCamera.lookAt(x, y, z);
           
           renderer.render(scene, minimapCamera);
-          
           renderer.setScissorTest(false);
-          renderer.setViewport(0, 0, viewport.width, viewport.height);
         }
       };
-
       session.requestAnimationFrame(onXRFrame);
     }
   </script>
